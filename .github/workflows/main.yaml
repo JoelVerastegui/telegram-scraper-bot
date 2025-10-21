@@ -72,4 +72,4 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Completion Message
-        run: echo "Successfully published ${{ env.DOCKER_REPO }} with tags: ${{ steps.extract_tag.outputs.TAG_VERSION }} and latest."
+        run: echo 'Successfully published ${{ env.DOCKER_REPO }} with tags: ${{ steps.extract_tag.outputs.TAG_VERSION }} and latest.'
