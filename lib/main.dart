@@ -5,6 +5,8 @@ import 'package:televerse/plugins/conversation.dart';
 import 'package:televerse/televerse.dart';
 import 'package:web_scraper/web_scraper.dart';
 
+import 'package:web_scraping_telegram_bot/utils/constants.dart';
+
 late Bot bot;
 final webScraper = WebScraper();
 String inputUrl = '';
@@ -30,23 +32,23 @@ Future<void> telegramBot(String token) async {
 
   bot.plugin(ConversationPlugin<Context>());
 
-  bot.use(createConversation<Context>('newEditScraping', newEditScraping));
-  bot.use(createConversation<Context>('editFrecuency', editFrecuency));
-  bot.use(createConversation<Context>('deleteScraping', deleteScraping));
-  bot.use(createConversation<Context>('emptyScraping', emptyScraping));
+  bot.use(createConversation<Context>(webConversationName, newEditScraping));
+  bot.use(createConversation<Context>(timeConversationName, editFrecuency));
+  bot.use(createConversation<Context>(deleteConversationName, deleteScraping));
+  bot.use(createConversation<Context>(emptyConversationName, emptyScraping));
 
   final menu = KeyboardMenu();
 
-  menu.text('Crear/Editar Web Scraping', (ctx) async {
-    await ctx.conversation.enter('newEditScraping');
+  menu.text(webButtonText, (ctx) async {
+    await ctx.conversation.enter(webConversationName);
   }).row();
 
-  menu.text('Cambiar frecuencia de notificaciones', (ctx) async {
-    await ctx.conversation.enter('editFrecuency');
+  menu.text(timeButtonText, (ctx) async {
+    await ctx.conversation.enter(timeConversationName);
   }).row();
 
-  menu.text('Eliminar Web Scraping', (ctx) async {
-    await ctx.conversation.enter('deleteScraping');
+  menu.text(deleteButtonText, (ctx) async {
+    await ctx.conversation.enter(deleteConversationName);
   });
 
   menu.oneTime().resized();
@@ -55,32 +57,25 @@ Future<void> telegramBot(String token) async {
 
   bot.command('start', (ctx) async {
     await ctx.reply(
-      "Hola, ¿qué acción deseas realizar hoy? Si necesitas más información, escribe /help.",
+      startResponse,
       replyMarkup: menu,
     );
   });
 
   bot.command('web', (ctx) async {
-    await ctx.conversation.enter('newEditScraping');
+    await ctx.conversation.enter(webConversationName);
   });
 
   bot.command('time', (ctx) async {
-    await ctx.conversation.enter('editFrecuency');
+    await ctx.conversation.enter(timeConversationName);
   });
 
   bot.command('delete', (ctx) async {
-    await ctx.conversation.enter('deleteScraping');
+    await ctx.conversation.enter(deleteConversationName);
   });
 
   bot.command('help', (ctx) async {
-    final commands = 
-'''
-/start: Muestra las opciones de inicio.\n
-/web: Crea o edita la web ingresada.\n
-/time: Modifica la frecuencia en minutos en que se realiza la búsqueda.\n
-/delete: Elimina la web ingresada.\n
-/help: Muestra los comandos disponibles.
-''';
+    final commands = helpResponse;
 
     await ctx.reply(commands);
   });
@@ -88,7 +83,7 @@ Future<void> telegramBot(String token) async {
   bot.onError((error) async {
     print('Bot Error: ${error.error}');
     if (error.hasContext) {
-      await error.ctx!.reply('Lo siento, algo ha salido mal.');
+      await error.ctx!.reply(errorResponse);
     }
   });
   
@@ -97,36 +92,26 @@ Future<void> telegramBot(String token) async {
 
 Future<void> newEditScraping (Conversation<Context> conversation, Context ctx) async {
   try {
-    final regex = RegExp(r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)');
+    final regex = RegExp(urlRegex);
 
-    await ctx.reply("¿Cuál es la url de la web?");
+    await ctx.reply(askUrl);
 
     final urlCtx = await conversation.waitUntil(
       (ctx) => regex.hasMatch(ctx.text ?? ''),
       timeout: Duration(minutes: 2),
       otherwise: (ctx) async {
-        final urlFormat = 
-'''
-El formato de texto es incorrecto. Se debe respetar el siguiente formato:\n
-1. Prefijo - 'https://' o 'http://'\n
-2. Subdominio - Ejemplo: 'www.'\n
-3. Nombre del dominio - Ejemplo: 'armandocasas'\n
-4. Extensión del dominio - Ejemplo: '.com', '.es', '.net'\n
-5. Url adicional\n
-Ejemplo: https://www.google.com/search?q=telegram\n
-''';
         await ctx.reply(urlFormat);
       },
     );
 
-    await urlCtx.reply("Bien. ¿Cuál es el elemento de búsqueda?\n(Clic derecho > Inspeccionar > Clic derecho > Copiar > Copiar selector)");
+    await urlCtx.reply(askElements);
 
     final elementCtx = await conversation.waitFor(
       bot.filters.text.matches,
       timeout: Duration(minutes: 2),
     );
 
-    await urlCtx.reply("Perfecto. ¿Cuáles son los atributos a consultar? Separa cada atributo con un espacio en blanco.\nPor ejemplo: title href style id class");
+    await urlCtx.reply(askAttributes);
 
     final attrCtx = await conversation.waitUntil(
       bot.filters.text.matches,
@@ -140,50 +125,50 @@ Ejemplo: https://www.google.com/search?q=telegram\n
 
       startTimer(ctx);
 
-      await elementCtx.reply("Perfecto, la búsqueda se hará cada $minutesFrecuency minuto${minutesFrecuency != 1 ? 's' : ''}.");
+      await elementCtx.reply(newFrecuencyTime(minutesFrecuency));
 
-      await ctx.reply("Para volver a ver las opciones de inicio, ingresa /start.");
+      await ctx.reply(backToStart);
     } else {
-      await ctx.reply("Los parámetros no se han ingresado correctamente.");
+      await ctx.reply(webErrorParams);
     }
   } on ConversationTimeoutException {
-    await ctx.reply("Lo siento, el tiempo de espera se ha agotado.");
+    await ctx.reply(timeoutException);
   }
 }
 
 Future<void> editFrecuency (Conversation<Context> conversation, Context ctx) async {
   try {
-    await ctx.reply("La búsqueda actualmente se hace cada $minutesFrecuency minuto${minutesFrecuency != 1 ? 's' : ''}.");
-    await ctx.reply("¿Cuál es la nueva frecuencia en minutos?");
+    await ctx.reply(currentFrecuencyTime(minutesFrecuency));
+    await ctx.reply(askFrecuencyTime);
 
     final minutesCtx = await conversation.waitUntil(
       (ctx) => int.tryParse(ctx.text ?? '') != null && int.parse(ctx.text!) > 0,
       timeout: Duration(minutes: 2),
       otherwise: (ctx) async {
-        await ctx.reply("Debes ingresar un número válido mayor a 0.");
+        await ctx.reply(frecuencyTimeFormat);
       },
     );
 
-    await minutesCtx.reply("Perfecto, la búsqueda se hará cada ${minutesCtx.text} minuto${minutesCtx.text != '1' ? 's' : ''}.");
+    await minutesCtx.reply(newFrecuencyTime(int.parse(minutesCtx.text!)));
 
     minutesFrecuency = int.parse(minutesCtx.text!);
 
     if (inputUrl.isEmpty || searchElement.isEmpty || searchAttributes.isEmpty) {
-      await ctx.conversation.enter('emptyScraping');
+      await ctx.conversation.enter(emptyConversationName);
     } else {
-      await ctx.reply("Para volver a ver las opciones de inicio, ingresa /start.");
+      await ctx.reply(backToStart);
 
       startTimer(ctx);
     }
   } on ConversationTimeoutException {
-    await ctx.reply("Lo siento, el tiempo de espera se ha agotado.");
+    await ctx.reply(timeoutException);
   }
 }
 
 Future<void> deleteScraping (Conversation<Context> conversation, Context ctx) async {
   try {
     if (inputUrl.isEmpty || searchElement.isEmpty || searchAttributes.isEmpty) {
-      return await ctx.conversation.enter('emptyScraping');
+      return await ctx.conversation.enter(emptyConversationName);
     }
 
     final menu = KeyboardMenu()
@@ -192,13 +177,13 @@ Future<void> deleteScraping (Conversation<Context> conversation, Context ctx) as
       .oneTime()
       .resized();
 
-    await ctx.reply("¿Deseas eliminar la url de la web ingresada? La búsqueda se detendrá.", replyMarkup: menu);
+    await ctx.reply(askToDelete, replyMarkup: menu);
 
     final yesNoCtx = await conversation.waitUntil(
       (ctx) => ctx.text == 'Sí' || ctx.text == 'No',
       timeout: Duration(minutes: 2),
       otherwise: (ctx) async {
-        await ctx.reply("Debe seleccionar una de las opciones. (Sí o No)");
+        await ctx.reply(yesNoFormat);
       },
     );
 
@@ -209,14 +194,14 @@ Future<void> deleteScraping (Conversation<Context> conversation, Context ctx) as
       searchElement = '';
       searchAttributes = '';
 
-      await ctx.reply("Listo, la url se ha eliminado correctamente.");
+      await ctx.reply(deleteCompleted);
 
-      await ctx.reply("Para volver a ver las opciones de inicio, ingresa /start.");
+      await ctx.reply(backToStart);
     } else {
-      await ctx.reply("No hay problema, la búsqueda se mantiene activa.");
+      await ctx.reply(deleteCanceled);
     }
   } on ConversationTimeoutException {
-    await ctx.reply("Lo siento, el tiempo de espera se ha agotado.");
+    await ctx.reply(timeoutException);
   }
 }
 
@@ -228,23 +213,23 @@ Future<void> emptyScraping (Conversation<Context> conversation, Context ctx) asy
       .oneTime()
       .resized();
 
-    await ctx.reply("Aún no haz ingresado una web para realizar la búsqueda. ¿Deseas agregarla ahora?", replyMarkup: menu);
+    await ctx.reply(askEmptyWeb, replyMarkup: menu);
 
     final yesNoCtx = await conversation.waitUntil(
       (ctx) => ctx.text == 'Sí' || ctx.text == 'No',
       timeout: Duration(minutes: 2),
       otherwise: (ctx) async {
-        await ctx.reply("Debes seleccionar una de las opciones. (Sí o No)");
+        await ctx.reply(yesNoFormat);
       },
     );
 
     if (yesNoCtx.text! == 'Sí') {
-      await ctx.conversation.enter('newEditScraping');
+      await ctx.conversation.enter(webConversationName);
     } else {
-      await ctx.reply("No hay problema, si quieres ver las opciones de inicio, escribe /start.");
+      await ctx.reply(emptyWebCanceled);
     }
   } on ConversationTimeoutException {
-    await ctx.reply("Lo siento, el tiempo de espera se ha agotado.");
+    await ctx.reply(timeoutException);
   }
 }
 
@@ -259,8 +244,8 @@ Future<void> startTimer(Context ctx) async {
       searchElement = '';
       searchAttributes = '';
 
-      await ctx.reply("La búsqueda ha finalizado.");
-      await ctx.reply("Para realizar una nueva búsqueda, ingresa /web.");
+      await ctx.reply(searchEnded);
+      await ctx.reply(anotherSearch);
       
       timer.cancel();
     }
@@ -275,7 +260,7 @@ Future<bool> webSearch(Context ctx) async {
   final results = webScraper.getElement(searchElement, attributes);
 
   if (results.isNotEmpty) {
-    await ctx.reply('Se ha encontrado ${results.length} elemento${results.length != 1 ? 's' : ''}.');
+    await ctx.reply(elementsFound(results.length));
 
     for(final result in results) {
       String response = '';
@@ -284,7 +269,7 @@ Future<bool> webSearch(Context ctx) async {
         if (attr == 'href') {
           final baseUrl = inputUrl.substring(0, inputUrl.indexOf('/', 8));
 
-          if (result['attributes'][attr].toString().isNotEmpty && !result['attributes'][attr].toString().contains(baseUrl)) {
+          if (result['attributes'][attr].toString().isNotEmpty && result['attributes'][attr].toString().startsWith('/')) {
             response += '$attr: ${baseUrl + result['attributes'][attr].toString().replaceAll(' ', '%20')}\n';
             continue;
           }
