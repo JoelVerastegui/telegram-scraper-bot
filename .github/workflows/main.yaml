@@ -27,7 +27,7 @@ jobs:
       - name: Setup Dart SDK
         uses: dart-lang/setup-dart@v1
         with:
-          version: ${{ env.DART_VERSION }}
+          sdk: ${{ env.DART_VERSION }}
 
       - name: Get Dependencies
         run: dart pub get
